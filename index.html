@@ -266,6 +266,23 @@ button.primary {
     pointer-events: none;
 }
 
+.dday {
+    position: absolute;
+    top: 5px;
+    right: 28px;
+    font-size: 9.5px;
+    font-weight: 900;
+    color: #b8ac9e;
+    line-height: 1;
+    letter-spacing: -.02em;
+    pointer-events: none;
+    white-space: nowrap;
+}
+
+.item.love .dday {
+    right: 24px;
+}
+
 .item:hover {
     filter: brightness(.985);
 }
@@ -716,6 +733,19 @@ button.love-btn {
     </div>
 </div>
 
+<div class="modal-overlay" id="ddayModal">
+    <div class="modal">
+        <h3 id="ddayModalTitle">첫만남일 설정</h3>
+        <label>첫만남일</label>
+        <input type="date" id="ddayDate" />
+        <div class="modal-actions">
+            <button onclick="clearDday()">초기화</button>
+            <button onclick="closeDdayModal()">취소</button>
+            <button class="primary" onclick="saveDday()">저장</button>
+        </div>
+    </div>
+</div>
+
 <div class="modal-overlay" id="teamModal">
     <div class="modal">
         <h3>새 팀 추가</h3>
@@ -770,10 +800,13 @@ let chars = [
     { g:"HARMONY SUPPORT", short:"HS", rank:"S", n:"오아시스", a:"물", s:0, love:false },
     { g:"HARMONY SUPPORT", short:"HS", rank:"S", n:"자이안", a:"풀", s:0, love:false },
     { g:"HARMONY SUPPORT", short:"HS", rank:"S", n:"스트레이", a:"번개", s:0, love:false },
+    { g:"HARMONY SUPPORT", short:"HS", rank:"S", n:"페더", a:"바람", s:0, love:false },
+    { g:"HARMONY SUPPORT", short:"HS", rank:"C", n:"코드", a:"무속성", s:0, love:false },
 
     { g:"HARMONY R.S.T", short:"HR", rank:"S", n:"에덴", a:"바람", s:0, love:false },
     { g:"HARMONY R.S.T", short:"HR", rank:"S", n:"휴고", a:"불", s:0, love:false },
     { g:"HARMONY R.S.T", short:"HR", rank:"S", n:"카르마", a:"번개", s:0, love:false },
+    { g:"HARMONY R.S.T", short:"HR", rank:"S", n:"저스티스", a:"물", s:0, love:false },
 
     { g:"HARMONY CORE", short:"HC", rank:"A", n:"퓨어", a:"무속성", s:0, love:false },
     { g:"HARMONY CORE", short:"HC", rank:"S", n:"밴스", a:"풀", s:0, love:false }
@@ -791,10 +824,9 @@ let teamOrder = [
     { name: "HARMONY CORE", short: "HC" }
 ];
 
-let editingChar = null; // 편집 중인 캐릭터
+let editingChar = null;
 
 function load() {
-    // 진행 상태 불러오기 (기존 호환)
     const saved = localStorage.getItem("character-list-archive-love-progress");
     if (saved) {
         try {
@@ -807,7 +839,6 @@ function load() {
             });
         } catch(e) {}
     }
-    // 캐릭터 목록 자체 + 팀 목록 불러오기
     const savedData = localStorage.getItem("character-list-archive-data");
     if (savedData) {
         try {
@@ -819,11 +850,9 @@ function load() {
 }
 
 function save() {
-    // 진행 상태 (기존 호환)
     const data = {};
     chars.forEach(c => data[c.n] = { s: c.s, love: c.love });
     localStorage.setItem("character-list-archive-love-progress", JSON.stringify(data));
-    // 캐릭터 목록 + 팀 목록 전체
     localStorage.setItem("character-list-archive-data", JSON.stringify({
         chars: chars,
         teamOrder: teamOrder
@@ -853,9 +882,21 @@ function groupProgress(list) {
     return `${played}/${list.length} 플레이`;
 }
 
+function calcDday(dateStr) {
+    if (!dateStr) return null;
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    const start = new Date(dateStr);
+    start.setHours(0,0,0,0);
+    const diff = Math.floor((today - start) / 86400000);
+    if (diff === 0) return "D-DAY";
+    return "D+" + diff;
+}
+
 function makeItem(c) {
     const item = document.createElement("div");
     item.className = "item " + statusClass[c.s] + (c.love ? " love" : "");
+    const ddayStr = calcDday(c.met);
     item.innerHTML = `
         <button type="button" class="delete-btn" title="삭제" aria-label="삭제">×</button>
         <div class="check">${checkMark[c.s]}</div>
@@ -874,7 +915,23 @@ function makeItem(c) {
         <div class="right-tools">
             <button type="button" class="love-btn" title="애정 캐릭터 체크" aria-label="애정 캐릭터 체크">♥</button>
         </div>
+        ${ddayStr ? `<span class="dday">${ddayStr}</span>` : ""}
     `;
+
+    // 꾹 누르기 (longpress) — 첫만남일 팝업
+    let pressTimer = null;
+    let moved = false;
+
+    item.addEventListener("pointerdown", (e) => {
+        if (e.target.closest(".love-btn") || e.target.closest(".delete-btn")) return;
+        moved = false;
+        pressTimer = setTimeout(() => {
+            openDdayModal(c);
+        }, 500);
+    });
+    item.addEventListener("pointermove", () => { moved = true; clearTimeout(pressTimer); });
+    item.addEventListener("pointerup", () => { clearTimeout(pressTimer); });
+    item.addEventListener("pointercancel", () => { clearTimeout(pressTimer); });
 
     item.onclick = () => {
         if (document.getElementById("capture-area").classList.contains("edit-mode")) {
@@ -921,7 +978,6 @@ function section(title, list, teamName) {
     const grid = wrap.querySelector(".grid");
     list.forEach(c => grid.appendChild(makeItem(c)));
 
-    // 편집 모드용 + 추가 카드 (팀별 모드에서만)
     if (teamName) {
         const addCard = document.createElement("div");
         addCard.className = "add-card";
@@ -944,7 +1000,6 @@ function render() {
         teamOrder.forEach(t => {
             root.appendChild(section(t.name, chars.filter(c => c.g === t.name), t.name));
         });
-        // 팀 추가 버튼 (편집 모드에서만 보임)
         const addTeamBtn = document.createElement("button");
         addTeamBtn.type = "button";
         addTeamBtn.className = "add-team-btn";
@@ -1037,19 +1092,16 @@ function saveCharFromModal() {
         return;
     }
 
-    // 팀 약자 찾기
     const teamInfo = teamOrder.find(t => t.name === team);
     const short = teamInfo ? teamInfo.short : "";
 
     if (editingChar) {
-        // 편집
         editingChar.n = name;
         editingChar.g = team;
         editingChar.short = short;
         editingChar.rank = rank;
         editingChar.a = attr;
     } else {
-        // 신규 추가 - 중복 체크
         if (chars.some(c => c.n === name)) {
             if (!confirm(`"${name}" 이름의 캐릭터가 이미 있어요. 그래도 추가할까요?`)) return;
         }
@@ -1061,6 +1113,37 @@ function saveCharFromModal() {
 
     save();
     closeModal();
+    render();
+}
+
+let ddayTarget = null;
+
+function openDdayModal(c) {
+    ddayTarget = c;
+    document.getElementById("ddayModalTitle").textContent = `${c.n} — 첫만남일`;
+    document.getElementById("ddayDate").value = c.met || "";
+    document.getElementById("ddayModal").classList.add("show");
+    setTimeout(() => document.getElementById("ddayDate").focus(), 50);
+}
+
+function closeDdayModal() {
+    document.getElementById("ddayModal").classList.remove("show");
+    ddayTarget = null;
+}
+
+function saveDday() {
+    if (!ddayTarget) return;
+    ddayTarget.met = document.getElementById("ddayDate").value || null;
+    save();
+    closeDdayModal();
+    render();
+}
+
+function clearDday() {
+    if (!ddayTarget) return;
+    ddayTarget.met = null;
+    save();
+    closeDdayModal();
     render();
 }
 
@@ -1094,17 +1177,17 @@ function saveNewTeam() {
     render();
 }
 
-// 모달 바깥 클릭 시 닫기
 document.addEventListener("click", (e) => {
     if (e.target.id === "charModal") closeModal();
     if (e.target.id === "teamModal") closeTeamModal();
+    if (e.target.id === "ddayModal") closeDdayModal();
 });
 
-// ESC 키로 모달 닫기
 document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
         closeModal();
         closeTeamModal();
+        closeDdayModal();
     }
 });
 
