@@ -889,8 +889,8 @@ function calcDday(dateStr) {
     const start = new Date(dateStr);
     start.setHours(0,0,0,0);
     const diff = Math.floor((today - start) / 86400000);
-    if (diff === 0) return "D-DAY";
-    return "D+" + diff;
+    if (diff < 0) return null;
+    return "D+" + (diff + 1);
 }
 
 function makeItem(c) {
